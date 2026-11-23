@@ -1,355 +1,91 @@
-import { useState, useEffect } from 'react'
-import { Button } from '@/components/ui/button.jsx'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.jsx'
-import { Input } from '@/components/ui/input.jsx'
-import { Label } from '@/components/ui/label.jsx'
-import { Slider } from '@/components/ui/slider.jsx'
-import { Separator } from '@/components/ui/separator.jsx'
-import { Badge } from '@/components/ui/badge.jsx'
-import { Calculator, Printer, Zap, Clock, DollarSign, TrendingUp } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Calculator, Printer, Settings2, Package, TrendingUp, RefreshCw } from 'lucide-react'
+import { calculateQuote, DEFAULT_SETTINGS, DEFAULT_JOB, DEFAULT_FILAMENTS, DEFAULT_CHANNEL_FEES, CHANNELS } from './lib/pricing.js'
 import './App.css'
 
-function App() {
-  // Estados para os inputs
-  const [pesoFilamento, setPesoFilamento] = useState(143)
-  const [tempoImpressao, setTempoImpressao] = useState(728)
-  const [custoKwh, setCustoKwh] = useState(1.0)
-  const [precoKgFilamento, setPrecoKgFilamento] = useState(120.0)
-  const [valorHoraTrabalho, setValorHoraTrabalho] = useState(15.0)
-  const [custoImpressora, setCustoImpressora] = useState(2500.0)
-  const [margemLucro, setMargemLucro] = useState([50])
-  
-  // Estados para os resultados
-  const [resultados, setResultados] = useState({})
-
-  // Funções de cálculo (baseadas na calculadora Python)
-  const calcularCustoEnergia = (tempoMinutos, potenciaWatts = 57, custoKwh = 1.0) => {
-    const tempoHoras = tempoMinutos / 60
-    const consumoKwh = (potenciaWatts / 1000) * tempoHoras
-    return consumoKwh * custoKwh
-  }
-
-  const calcularCustoFilamento = (pesoGramas, precoKg) => {
-    const pesoKg = pesoGramas / 1000
-    return pesoKg * precoKg
-  }
-
-  const calcularCustoMaoObra = (tempoMinutos, valorHora) => {
-    const tempoTrabalhoHoras = (tempoMinutos * 0.1) / 60
-    return tempoTrabalhoHoras * valorHora
-  }
-
-  const calcularCustoDepreciacao = (tempoMinutos, custoImpressora, vidaUtilHoras = 5000) => {
-    const tempoHoras = tempoMinutos / 60
-    const custoPorHora = custoImpressora / vidaUtilHoras
-    return tempoHoras * custoPorHora
-  }
-
-  const calcularPrecoVenda = () => {
-    const custoEnergia = calcularCustoEnergia(tempoImpressao, 57, custoKwh)
-    const custoFilamento = calcularCustoFilamento(pesoFilamento, precoKgFilamento)
-    const custoMaoObra = calcularCustoMaoObra(tempoImpressao, valorHoraTrabalho)
-    const custoDepreciacao = calcularCustoDepreciacao(tempoImpressao, custoImpressora)
-    
-    const custoTotal = custoEnergia + custoFilamento + custoMaoObra + custoDepreciacao
-    const margemDecimal = margemLucro[0] / 100
-    const margemLucroValor = custoTotal * margemDecimal
-    const precoVenda = custoTotal + margemLucroValor
-
+const STORAGE_KEY = 'benchybros-calculadora-v2'
+const money = value => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value) || 0)
+const number = value => new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(Number(value) || 0)
+const fromStorage = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
     return {
-      custoEnergia,
-      custoFilamento,
-      custoMaoObra,
-      custoDepreciacao,
-      custoTotal,
-      margemLucroValor,
-      precoVenda,
-      margemLucroPercentual: margemLucro[0]
+      settings: { ...DEFAULT_SETTINGS, ...(saved.settings || {}) },
+      job: { ...DEFAULT_JOB, ...(saved.job || {}) },
+      filaments: Array.isArray(saved.filaments) && saved.filaments.length ? saved.filaments : DEFAULT_FILAMENTS,
+      filamentId: saved.filamentId || 'pla',
+      channelId: saved.channelId || 'direto',
+      fees: { ...DEFAULT_CHANNEL_FEES, ...(saved.fees || {}) },
     }
-  }
-
-  // Recalcular sempre que os inputs mudarem
-  useEffect(() => {
-    setResultados(calcularPrecoVenda())
-  }, [pesoFilamento, tempoImpressao, custoKwh, precoKgFilamento, valorHoraTrabalho, custoImpressora, margemLucro])
-
-  const formatarMoeda = (valor) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(valor)
-  }
-
-  const formatarTempo = (minutos) => {
-    const horas = Math.floor(minutos / 60)
-    const mins = minutos % 60
-    return `${horas}h ${mins}min`
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <Calculator className="h-8 w-8 text-blue-600" />
-            <h1 className="text-4xl font-bold text-gray-900">Calculadora de Preços</h1>
-          </div>
-          <p className="text-xl text-gray-600">Impressão 3D - Bambulab A1 Mini</p>
-          <Badge variant="secondary" className="mt-2">
-            <Printer className="h-4 w-4 mr-1" />
-            Consumo: 57W durante impressão
-          </Badge>
-        </div>
-
-        <div className="grid lg:grid-cols-2 gap-8">
-          {/* Painel de Inputs */}
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Printer className="h-5 w-5" />
-                  Dados da Impressão
-                </CardTitle>
-                <CardDescription>
-                  Insira os dados específicos da sua impressão
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="peso">Filamento Usado (g)</Label>
-                    <Input
-                      id="peso"
-                      type="number"
-                      value={pesoFilamento}
-                      onChange={(e) => setPesoFilamento(Number(e.target.value))}
-                      className="text-lg"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="tempo">Tempo (minutos)</Label>
-                    <Input
-                      id="tempo"
-                      type="number"
-                      value={tempoImpressao}
-                      onChange={(e) => setTempoImpressao(Number(e.target.value))}
-                      className="text-lg"
-                    />
-                    <p className="text-sm text-gray-500">{formatarTempo(tempoImpressao)}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <DollarSign className="h-5 w-5" />
-                  Custos e Preços
-                </CardTitle>
-                <CardDescription>
-                  Configure os custos base para o cálculo
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="kwh">Custo kWh (R$)</Label>
-                    <Input
-                      id="kwh"
-                      type="number"
-                      step="0.01"
-                      value={custoKwh}
-                      onChange={(e) => setCustoKwh(Number(e.target.value))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="filamento">Filamento/kg (R$)</Label>
-                    <Input
-                      id="filamento"
-                      type="number"
-                      step="0.01"
-                      value={precoKgFilamento}
-                      onChange={(e) => setPrecoKgFilamento(Number(e.target.value))}
-                    />
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="trabalho">Valor/hora trabalho (R$)</Label>
-                    <Input
-                      id="trabalho"
-                      type="number"
-                      step="0.01"
-                      value={valorHoraTrabalho}
-                      onChange={(e) => setValorHoraTrabalho(Number(e.target.value))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="impressora">Custo impressora (R$)</Label>
-                    <Input
-                      id="impressora"
-                      type="number"
-                      step="0.01"
-                      value={custoImpressora}
-                      onChange={(e) => setCustoImpressora(Number(e.target.value))}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5" />
-                  Margem de Lucro
-                </CardTitle>
-                <CardDescription>
-                  Ajuste a margem de lucro desejada
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <Label>Margem de Lucro</Label>
-                    <Badge variant="outline" className="text-lg px-3 py-1">
-                      {margemLucro[0]}%
-                    </Badge>
-                  </div>
-                  <Slider
-                    value={margemLucro}
-                    onValueChange={setMargemLucro}
-                    max={200}
-                    min={10}
-                    step={5}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-sm text-gray-500">
-                    <span>10%</span>
-                    <span>100%</span>
-                    <span>200%</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Painel de Resultados */}
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calculator className="h-5 w-5" />
-                  Breakdown de Custos
-                </CardTitle>
-                <CardDescription>
-                  Detalhamento de todos os custos envolvidos
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Zap className="h-4 w-4 text-yellow-600" />
-                      <span className="font-medium">Energia Elétrica</span>
-                    </div>
-                    <span className="font-bold text-yellow-700">
-                      {formatarMoeda(resultados.custoEnergia || 0)}
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <div className="h-4 w-4 bg-green-600 rounded-full" />
-                      <span className="font-medium">Filamento</span>
-                    </div>
-                    <span className="font-bold text-green-700">
-                      {formatarMoeda(resultados.custoFilamento || 0)}
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-blue-600" />
-                      <span className="font-medium">Mão de Obra</span>
-                    </div>
-                    <span className="font-bold text-blue-700">
-                      {formatarMoeda(resultados.custoMaoObra || 0)}
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Printer className="h-4 w-4 text-purple-600" />
-                      <span className="font-medium">Depreciação</span>
-                    </div>
-                    <span className="font-bold text-purple-700">
-                      {formatarMoeda(resultados.custoDepreciacao || 0)}
-                    </span>
-                  </div>
-                </div>
-                
-                <Separator />
-                
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                  <span className="font-semibold text-lg">Custo Total</span>
-                  <span className="font-bold text-xl text-gray-800">
-                    {formatarMoeda(resultados.custoTotal || 0)}
-                  </span>
-                </div>
-                
-                <div className="flex items-center justify-between p-4 bg-indigo-50 rounded-lg">
-                  <span className="font-semibold text-lg">Margem de Lucro ({resultados.margemLucroPercentual}%)</span>
-                  <span className="font-bold text-xl text-indigo-700">
-                    {formatarMoeda(resultados.margemLucroValor || 0)}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-2 border-green-200 bg-gradient-to-r from-green-50 to-emerald-50">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-green-800">
-                  <TrendingUp className="h-6 w-6" />
-                  Preço de Venda Sugerido
-                </CardTitle>
-                <CardDescription className="text-green-600">
-                  Valor final recomendado para seu produto
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center">
-                  <div className="text-5xl font-bold text-green-700 mb-2">
-                    {formatarMoeda(resultados.precoVenda || 0)}
-                  </div>
-                  <p className="text-green-600">
-                    Com {resultados.margemLucroPercentual}% de margem de lucro
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Dicas */}
-            <Card className="border-blue-200 bg-blue-50">
-              <CardHeader>
-                <CardTitle className="text-blue-800">💡 Dicas de Precificação</CardTitle>
-              </CardHeader>
-              <CardContent className="text-blue-700 space-y-2">
-                <p>• <strong>30-50%:</strong> Margem conservadora para produtos simples</p>
-                <p>• <strong>50-80%:</strong> Margem padrão para produtos personalizados</p>
-                <p>• <strong>80-150%:</strong> Margem para produtos complexos ou únicos</p>
-                <p>• Considere também: embalagem, marketing e tempo de entrega</p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+  } catch { return { settings: DEFAULT_SETTINGS, job: DEFAULT_JOB, filaments: DEFAULT_FILAMENTS, filamentId: 'pla', channelId: 'direto', fees: DEFAULT_CHANNEL_FEES } }
 }
-
+const fields = {
+  settings: [
+    ['printerPrice', 'Preço de reposição da impressora (R$)', 100], ['usefulLifeYears', 'Vida útil (anos)', 1],
+    ['annualUsagePercent', 'Uso médio anual (%)', 1], ['annualMaintenance', 'Manutenção anual (R$)', 10],
+    ['powerWatts', 'Consumo médio em impressão (W)', 10], ['machineReserveFactor', 'Reserva da máquina (multiplicador)', 0.05],
+    ['energyPriceKwh', 'Energia (R$/kWh)', 0.01], ['laborPriceHour', 'Sua hora de trabalho (R$)', 1],
+    ['setupMinutesPerPlate', 'Preparação por placa (min)', 1], ['finishingMinutesPerPiece', 'Acabamento por peça (min)', 1],
+    ['packagingPricePerPiece', 'Embalagem por peça (R$)', 0.1], ['materialWastePercent', 'Desperdício extra (%)', 1],
+    ['failurePercent', 'Reserva para falhas (%)', 1], ['taxesPercent', 'Impostos sobre venda (%)', 1],
+  ],
+  job: [
+    ['quantity', 'Quantidade de peças', 1], ['partsPerPlate', 'Peças por placa', 1],
+    ['gramsPerPiece', 'Filamento por peça (g)', 1], ['extraWasteGramsPerPlate', 'Purgas/suportes extras por placa (g)', 1],
+    ['hoursPerPlate', 'Horas de impressão por placa', 1], ['minutesPerPlate', 'Minutos adicionais por placa', 1],
+    ['extraCostPerOrder', 'Outros custos do pedido (R$)', 0.5],
+  ]
+}
+function NumberField({ label, value, onChange, step = 1 }) {
+  return <label className="field"><span>{label}</span><input type="number" min="0" step={step} value={value} onChange={e => onChange(e.target.value === '' ? 0 : Number(e.target.value))} /></label>
+}
+function App() {
+  const [initial] = useState(fromStorage)
+  const [settings, setSettings] = useState(initial.settings)
+  const [job, setJob] = useState(initial.job)
+  const [filaments, setFilaments] = useState(initial.filaments)
+  const [filamentId, setFilamentId] = useState(initial.filamentId)
+  const [channelId, setChannelId] = useState(initial.channelId)
+  const [fees, setFees] = useState(initial.fees)
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ settings, job, filaments, filamentId, channelId, fees }))
+  }, [settings, job, filaments, filamentId, channelId, fees])
+  const filament = filaments.find(f => f.id === filamentId) || filaments[0]
+  const channelFees = fees[channelId] || { percent: 0, perPiece: 0 }
+  const result = useMemo(() => calculateQuote(job, settings, filament?.priceKg || 0, channelFees), [job, settings, filament, channelFees])
+  const editSetting = (key, value) => setSettings(s => ({ ...s, [key]: value }))
+  const editJob = (key, value) => setJob(s => ({ ...s, [key]: value }))
+  const editFilament = (key, value) => setFilaments(items => items.map(f => f.id === filamentId ? { ...f, [key]: value } : f))
+  const editFee = (key, value) => setFees(v => ({ ...v, [channelId]: { ...(v[channelId] || {}), [key]: value } }))
+  const reset = () => { if (window.confirm('Restaurar todos os valores iniciais? Seus ajustes serão perdidos.')) { setSettings({ ...DEFAULT_SETTINGS }); setJob({ ...DEFAULT_JOB }); setFilaments(DEFAULT_FILAMENTS.map(f => ({ ...f }))); setFilamentId('pla'); setChannelId('direto'); setFees({ ...DEFAULT_CHANNEL_FEES }) } }
+  const breakdown = [
+    ['Filamento, com desperdício', result.material],
+    ['Energia elétrica', result.energy],
+    ['Depreciação da Creator 5', result.depreciation],
+    ['Manutenção e reserva da máquina', result.maintenance + result.machineReserve],
+    ['Mão de obra efetiva', result.labor],
+    ['Embalagem', result.packaging],
+    ['Outros custos', result.extras],
+    ['Reserva de falhas', result.failureReserve],
+  ]
+  return <main className="page">
+    <header className="top">
+      <div className="brand"><span className="brand-icon"><Printer size={24} /></span><div><strong>3D BENCHY BROS</strong><small>Calculadora de impressão 3D · 2026</small></div></div>
+      <button className="ghost" onClick={reset}><RefreshCw size={16} /> Restaurar</button>
+    </header>
+    <section className="intro"><div><span className="eyebrow">ORÇAMENTOS DE IMPRESSÃO 3D</span><h1>Quanto cobrar pela sua impressão?</h1><p>Calculadora configurada para a FlashForge Creator 5. Preencha o peso e o tempo informados pelo fatiador, escolha o canal de venda e confira o lucro real.</p></div><span className="printer-tag">FlashForge Creator 5 · bico 0,4 mm</span></section>
+    <div className="layout">
+      <div className="left-stack">
+        <section className="panel"><h2><Calculator size={19} /> Dados da impressão</h2><p className="muted">Quando várias peças são feitas na mesma placa, informe o peso por unidade e o tempo da placa inteira.</p><div className="field-grid">{fields.job.map(([key, label, step]) => <NumberField key={key} label={label} step={step} value={job[key]} onChange={v => editJob(key, v)} />)}</div><div className="note">Total: <b>{result.plates} placa(s)</b> · <b>{number(result.printHours)} h</b> de máquina · <b>{number(result.usedGrams)} g</b> de material antes da reserva de perdas.</div></section>
+        <section className="panel"><h2><Package size={19} /> Filamento e canal de venda</h2><div className="field-grid"><label className="field"><span>Tipo de filamento</span><select value={filamentId} onChange={e => setFilamentId(e.target.value)}>{filaments.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label><NumberField label="Preço pago pelo filamento (R$/kg)" value={filament?.priceKg || 0} step={0.5} onChange={v => editFilament('priceKg', v)} /><label className="field"><span>Canal de venda</span><select value={channelId} onChange={e => setChannelId(e.target.value)}>{CHANNELS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label><NumberField label="Comissão e taxas percentuais (%)" step={0.5} value={channelFees.percent} onChange={v => editFee('percent', v)} /><NumberField label="Tarifa fixa por peça vendida (R$)" step={0.5} value={channelFees.perPiece} onChange={v => editFee('perPiece', v)} /><NumberField label="Margem desejada sobre a venda (%)" step={1} value={settings.targetMarginPercent} onChange={v => editSetting('targetMarginPercent', v)} /></div><p className="hint">Taxas de marketplace começam em zero porque variam conforme anúncio, faixa de preço e condições da conta. Consulte o simulador da sua venda antes de fechar o orçamento.</p></section>
+        <details className="panel advanced"><summary><Settings2 size={19} /> Custos da máquina e operação <span>Editar valores</span></summary><p className="muted">Todos os valores são editáveis. Custo da impressora usa valor de reposição estimado, não necessariamente o que você pagou.</p><div className="field-grid">{fields.settings.map(([key, label, step]) => <NumberField key={key} label={label} step={step} value={settings[key]} onChange={v => editSetting(key, v)} />)}</div><p className="hint">A alíquota de impostos inicia em 0% até confirmar o regime tributário da operação. Os R$ 0,95/kWh, 190 W e preço de reposição de R$ 8 mil são estimativas, não medições da sua instalação.</p></details>
+      </div>
+      <aside className="right-stack">
+        <section className="result-panel"><div className="result-eyebrow"><TrendingUp size={18} /> PREÇO SUGERIDO</div>{result.valid ? <><div className="price">{money(result.suggestedPerPiece)}<span> / peça</span></div><div className="total">Pedido completo: <b>{money(result.suggestedTotal)}</b></div><div className="stats"><div><span>Custo de produção</span><b>{money(result.productionCost)}</b></div><div><span>Lucro estimado</span><b>{money(result.profit)}</b></div><div><span>Margem sobre vendas</span><b>{number(result.achievedMarginPercent)}%</b></div></div></> : <div className="invalid">Não é possível sugerir um preço: a soma de impostos, taxas e margem precisa ser menor que 100%, e a vida útil e o uso anual precisam ser positivos.</div>}</section>
+        <section className="panel"><h2>Composição dos custos</h2><div className="costs">{breakdown.map(([name, value]) => <div key={name}><span>{name}</span><strong>{money(value)}</strong></div>)}</div><div className="sub-total"><span>Custo de produção total</span><strong>{money(result.productionCost)}</strong></div>{result.valid && <><div className="costs extra"><div><span>Taxas do canal de venda</span><strong>{money(result.platformFees)}</strong></div><div><span>Impostos estimados</span><strong>{money(result.taxes)}</strong></div><div><span>Lucro projetado</span><strong>{money(result.profit)}</strong></div></div></>}<div className="note">Máquina + energia + reserva: <b>{money(result.machineCostPerHour)}/h</b>. Tempo de trabalho é cobrado por preparação e acabamento, não por todas as horas de impressão.</div></section>
+        <p className="disclaimer">Estimativa para orçamento. Fretes, publicidade, serviços de terceiros, licenças e custos não preenchidos não estão incluídos. Valores salvos somente neste navegador.</p>
+      </aside>
+    </div>
+  </main>
+}
 export default App
-
